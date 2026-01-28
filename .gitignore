@@ -1,0 +1,38 @@
+# Any Node.js dependencies
+node_modules
+
+# Logs
+*.log
+npm-debug.log*
+backend/api.log
+
+# macOS system files
+.DS_Store
+
+# Font assets (ignore if fonts are not custom or not part of required versioned assets)
+*.eot
+*.otf
+*.ttf
+*.woff
+*.woff2
+
+# Package manager and lockfiles
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.local
+
+# Build outputs
+dist
+dist-ssr
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
