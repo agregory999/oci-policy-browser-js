@@ -19,6 +19,7 @@ const bodyParser = require('body-parser');
 const oci = require('oci-sdk');
 const cors = require('cors');
 const pino = require('pino');
+const http = require('http'); // For OCI metadata service
 
 // Logging configuration (console and file)
 const logLevel = process.env.LOG_LEVEL || 'info';
@@ -33,6 +34,12 @@ const logger = pino({
 const apiFileLogger = pino(
   pino.destination({ dest: path.join(__dirname, 'api.log'), sync: false })
 );
+
+/** Backend launch argument: instance principal mode
+ *  If "--instance-principal" is passed on CLI, use OCI instance principal auth and ignore local config/profiles.
+ */
+const INSTANCE_PRINCIPAL_MODE = process.argv.includes('--instance-principal');
+const INSTANCE_PRINCIPAL_PROFILE_NAME = "instance-principal";
 
 // Express app & constants
 const app = express();
@@ -154,12 +161,16 @@ function loadOciProfile(profileName, configPath = OCI_CONFIG_PATH) {
 /**
  * GET /api/profiles
  * Returns: { profiles: [profileName, ...] }
- * Lists available OCI CLI config profiles on this server
+ * Lists available OCI CLI config profiles on this server; or "instance-principal" if in IP mode
  */
 app.get('/api/profiles', (req, res) => {
   try {
-    const profiles = listOciProfiles();
-    res.json({ profiles });
+    if (INSTANCE_PRINCIPAL_MODE) {
+      res.json({ profiles: [INSTANCE_PRINCIPAL_PROFILE_NAME] });
+    } else {
+      const profiles = listOciProfiles();
+      res.json({ profiles });
+    }
   } catch (err) {
     logger.error({ err }, 'Error in /api/profiles');
     res.status(500).json({ error: 'Failed to get profiles' });
@@ -176,34 +187,66 @@ app.get('/api/profiles', (req, res) => {
  */
 app.get('/api/compartments', async (req, res) => {
   const { profile, parent } = req.query;
-  if (!profile) {
-    logger.error({profile, parent}, 'Missing profile param in /api/compartments');
-    return res.status(400).json({ error: "Missing profile" });
-  }
-  const profileConfig = loadOciProfile(profile);
-  if (!profileConfig) {
-    logger.error({profile, parent}, 'Profile not found in /api/compartments');
-    return res.status(404).json({ error: "Profile not found" });
-  }
-  try {
-    const provider = new oci.ConfigFileAuthenticationDetailsProvider(
-      OCI_CONFIG_PATH,
-      profile
-    );
-    const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
+  if (INSTANCE_PRINCIPAL_MODE) {
+    // Only accept magic profile name
+    if (profile !== INSTANCE_PRINCIPAL_PROFILE_NAME) {
+      logger.error({profile, parent}, 'In instance-principal mode, only accept "instance-principal" profile');
+      return res.status(400).json({ error: "Profile must be 'instance-principal' in this mode" });
+    }
+    // Use instance principals provider and get tenancy OCID from metadata
+    try {
+      // Provider
+      const provider = new oci.common.InstancePrincipalsAuthenticationDetailsProvider();
+      const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
 
-    const compartmentId = parent || profileConfig.tenancy;
+      // Get tenancy OCID (first time: fetch and memoize)
+      const tenancyId = await getInstanceTenancyOcid();
+      if (!tenancyId) throw new Error("Unable to get tenancy OCID from instance metadata");
 
-    const request = {
-      compartmentId,
-      accessLevel: "ANY",
-      compartmentIdInSubtree: false
-    };
-    const response = await identityClient.listCompartments(request);
-    res.json(response.items || []);
-  } catch (err) {
-    logger.error({ err, profile, parent }, 'Error in /api/compartments');
-    res.status(500).json({ error: err.message || "Failed to list compartments" });
+      const compartmentId = parent || tenancyId;
+
+      const request = {
+        compartmentId,
+        accessLevel: "ANY",
+        compartmentIdInSubtree: false
+      };
+      const response = await identityClient.listCompartments(request);
+      res.json(response.items || []);
+    } catch (err) {
+      logger.error({ err, profile, parent }, 'Error in /api/compartments (instance-principal)');
+      res.status(500).json({ error: err.message || "Failed to list compartments" });
+    }
+  } else {
+    // Legacy: profile mode
+    if (!profile) {
+      logger.error({profile, parent}, 'Missing profile param in /api/compartments');
+      return res.status(400).json({ error: "Missing profile" });
+    }
+    const profileConfig = loadOciProfile(profile);
+    if (!profileConfig) {
+      logger.error({profile, parent}, 'Profile not found in /api/compartments');
+      return res.status(404).json({ error: "Profile not found" });
+    }
+    try {
+      const provider = new oci.ConfigFileAuthenticationDetailsProvider(
+        OCI_CONFIG_PATH,
+        profile
+      );
+      const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
+
+      const compartmentId = parent || profileConfig.tenancy;
+
+      const request = {
+        compartmentId,
+        accessLevel: "ANY",
+        compartmentIdInSubtree: false
+      };
+      const response = await identityClient.listCompartments(request);
+      res.json(response.items || []);
+    } catch (err) {
+      logger.error({ err, profile, parent }, 'Error in /api/compartments');
+      res.status(500).json({ error: err.message || "Failed to list compartments" });
+    }
   }
 });
 
@@ -213,32 +256,60 @@ app.get('/api/compartments', async (req, res) => {
  *
  * For given profile and compartment, loads credentials and gets all policies in that compartment.
  */
+// GET /api/policies: List IAM policies for given profile/compartment; supports instance principal mode
 app.get('/api/policies', async (req, res) => {
   const { profile, compartmentId } = req.query;
-  if (!profile || !compartmentId) {
-    logger.error({profile, compartmentId}, 'Missing params in /api/policies');
-    return res.status(400).json({ error: "Missing profile or compartmentId" });
-  }
-  const profileConfig = loadOciProfile(profile);
-  if (!profileConfig) {
-    logger.error({profile, compartmentId}, 'Profile not found in /api/policies');
-    return res.status(404).json({ error: "Profile not found" });
-  }
-  try {
-    const provider = new oci.ConfigFileAuthenticationDetailsProvider(
-      OCI_CONFIG_PATH,
-      profile
-    );
-    const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
+  if (INSTANCE_PRINCIPAL_MODE) {
+    // Only accept magic profile name
+    if (profile !== INSTANCE_PRINCIPAL_PROFILE_NAME) {
+      logger.error({profile, compartmentId}, 'In instance-principal mode, only accept "instance-principal" profile');
+      return res.status(400).json({ error: "Profile must be 'instance-principal' in this mode" });
+    }
+    if (!compartmentId) {
+      logger.error({profile, compartmentId}, 'Missing compartmentId param in /api/policies');
+      return res.status(400).json({ error: "Missing compartmentId" });
+    }
+    try {
+      // Provider
+      const provider = new oci.common.InstancePrincipalsAuthenticationDetailsProvider();
+      const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
 
-    const request = {
-      compartmentId
-    };
-    const response = await identityClient.listPolicies(request);
-    res.json(response.items || []);
-  } catch (err) {
-    logger.error({ err, profile, compartmentId }, 'Error in /api/policies');
-    res.status(500).json({ error: err.message || "Failed to list policies" });
+      const request = {
+        compartmentId
+      };
+      const response = await identityClient.listPolicies(request);
+      res.json(response.items || []);
+    } catch (err) {
+      logger.error({ err, profile, compartmentId }, 'Error in /api/policies (instance-principal)');
+      res.status(500).json({ error: err.message || "Failed to list policies" });
+    }
+  } else {
+    // Legacy: profile mode
+    if (!profile || !compartmentId) {
+      logger.error({profile, compartmentId}, 'Missing params in /api/policies');
+      return res.status(400).json({ error: "Missing profile or compartmentId" });
+    }
+    const profileConfig = loadOciProfile(profile);
+    if (!profileConfig) {
+      logger.error({profile, compartmentId}, 'Profile not found in /api/policies');
+      return res.status(404).json({ error: "Profile not found" });
+    }
+    try {
+      const provider = new oci.ConfigFileAuthenticationDetailsProvider(
+        OCI_CONFIG_PATH,
+        profile
+      );
+      const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
+
+      const request = {
+        compartmentId
+      };
+      const response = await identityClient.listPolicies(request);
+      res.json(response.items || []);
+    } catch (err) {
+      logger.error({ err, profile, compartmentId }, 'Error in /api/policies');
+      res.status(500).json({ error: err.message || "Failed to list policies" });
+    }
   }
 });
 
@@ -256,8 +327,43 @@ app.use((err, req, res, next) => {
 });
 
 /**
+ * Helper: Get tenancy OCID from instance metadata service (cached after first call)
+ * Returns Promise<string|null>
+ */
+let _instanceMetaTenancyOcid = null;
+function getInstanceTenancyOcid() {
+  return new Promise((resolve) => {
+    if (_instanceMetaTenancyOcid) return resolve(_instanceMetaTenancyOcid);
+    // Fetch from OCI instance metadata (root info)
+    http.get(
+      "http://169.254.169.254/opc/v1/instance/",
+      (resp) => {
+        let data = "";
+        resp.on("data", (chunk) => { data += chunk; });
+        resp.on("end", () => {
+          try {
+            const meta = JSON.parse(data);
+            if (typeof meta.compartmentId === "string" && meta.compartmentId.length) {
+              _instanceMetaTenancyOcid = meta.compartmentId;
+              resolve(_instanceMetaTenancyOcid);
+            } else {
+              resolve(null);
+            }
+          } catch (err) {
+            resolve(null);
+          }
+        });
+      }
+    ).on("error", () => resolve(null));
+  });
+}
+
+/**
  * Start Express server
  */
 app.listen(PORT, () => {
-  logger.info({ port: PORT, logLevel, nodeEnv: process.env.NODE_ENV }, `Server running at http://localhost:${PORT}/`);
+  logger.info({ port: PORT, logLevel, nodeEnv: process.env.NODE_ENV, instancePrincipalMode: INSTANCE_PRINCIPAL_MODE }, `Server running at http://localhost:${PORT}/`);
+  if (INSTANCE_PRINCIPAL_MODE) {
+    logger.info("Backend running in INSTANCE PRINCIPAL mode: all OCI API calls use instance principal and expose only the 'instance-principal' profile.");
+  }
 });
