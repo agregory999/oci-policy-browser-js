@@ -197,7 +197,7 @@ app.get('/api/compartments', async (req, res) => {
     // Use instance principals provider and get tenancy OCID from metadata
     try {
       // Provider
-      const provider = ociCommon.InstancePrincipalsAuthenticationDetailsProvider();
+      const provider = new ociCommon.InstancePrincipalsAuthenticationDetailsProvider();
       const identityClient = new ociIdentity.IdentityClient({ authenticationDetailsProvider: provider });
 
       // Get tenancy OCID (first time: fetch and memoize)
@@ -272,7 +272,7 @@ app.get('/api/policies', async (req, res) => {
     }
     try {
       // Provider
-      const provider = ociCommon.InstancePrincipalsAuthenticationDetailsProvider();
+      const provider = new ociCommon.InstancePrincipalsAuthenticationDetailsProvider();
       const identityClient = new ociIdentity.IdentityClient({ authenticationDetailsProvider: provider });
 
       const request = {
@@ -364,6 +364,7 @@ function getInstanceTenancyOcid() {
  */
 app.listen(PORT, () => {
   logger.info({ port: PORT, logLevel, nodeEnv: process.env.NODE_ENV, instancePrincipalMode: INSTANCE_PRINCIPAL_MODE }, `Server running at http://localhost:${PORT}/`);
+
   if (INSTANCE_PRINCIPAL_MODE) {
     logger.info("Backend running in INSTANCE PRINCIPAL mode: all OCI API calls use instance principal and expose only the 'instance-principal' profile.");
   }
