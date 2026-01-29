@@ -16,7 +16,8 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const bodyParser = require('body-parser');
-const oci = require('oci-sdk');
+const ociCommon = require('oci-common');
+const ociIdentity = require('oci-identity');
 const cors = require('cors');
 const pino = require('pino');
 const http = require('http'); // For OCI metadata service
@@ -196,8 +197,8 @@ app.get('/api/compartments', async (req, res) => {
     // Use instance principals provider and get tenancy OCID from metadata
     try {
       // Provider
-      const provider = new oci.auth.InstancePrincipalsAuthenticationDetailsProvider();
-      const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
+      const provider = new ociCommon.InstancePrincipalsAuthenticationDetailsProvider();
+      const identityClient = new ociIdentity.IdentityClient({ authenticationDetailsProvider: provider });
 
       // Get tenancy OCID (first time: fetch and memoize)
       const tenancyId = await getInstanceTenancyOcid();
@@ -228,11 +229,11 @@ app.get('/api/compartments', async (req, res) => {
       return res.status(404).json({ error: "Profile not found" });
     }
     try {
-      const provider = new oci.auth.ConfigFileAuthenticationDetailsProvider(
+      const provider = new ociCommon.ConfigFileAuthenticationDetailsProvider(
         OCI_CONFIG_PATH,
         profile
       );
-      const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
+      const identityClient = new ociIdentity.IdentityClient({ authenticationDetailsProvider: provider });
 
       const compartmentId = parent || profileConfig.tenancy;
 
@@ -271,8 +272,8 @@ app.get('/api/policies', async (req, res) => {
     }
     try {
       // Provider
-      const provider = new oci.auth.InstancePrincipalsAuthenticationDetailsProvider();
-      const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
+      const provider = new ociCommon.InstancePrincipalsAuthenticationDetailsProvider();
+      const identityClient = new ociIdentity.IdentityClient({ authenticationDetailsProvider: provider });
 
       const request = {
         compartmentId
@@ -295,11 +296,11 @@ app.get('/api/policies', async (req, res) => {
       return res.status(404).json({ error: "Profile not found" });
     }
     try {
-      const provider = new oci.ConfigFileAuthenticationDetailsProvider(
+      const provider = new ociCommon.ConfigFileAuthenticationDetailsProvider(
         OCI_CONFIG_PATH,
         profile
       );
-      const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
+      const identityClient = new ociIdentity.IdentityClient({ authenticationDetailsProvider: provider });
 
       const request = {
         compartmentId
