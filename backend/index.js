@@ -197,7 +197,7 @@ app.get('/api/compartments', async (req, res) => {
     // Use instance principals provider and get tenancy OCID from metadata
     try {
       // Provider
-      const provider = ociCommon.InstancePrincipalsAuthenticationDetailsProvider.builder().build();
+      const provider = ociCommon.InstancePrincipalsAuthenticationDetailsProvider();
       const identityClient = new ociIdentity.IdentityClient({ authenticationDetailsProvider: provider });
 
       // Get tenancy OCID (first time: fetch and memoize)
@@ -272,7 +272,7 @@ app.get('/api/policies', async (req, res) => {
     }
     try {
       // Provider
-      const provider = ociCommon.InstancePrincipalsAuthenticationDetailsProvider.builder().build();
+      const provider = ociCommon.InstancePrincipalsAuthenticationDetailsProvider();
       const identityClient = new ociIdentity.IdentityClient({ authenticationDetailsProvider: provider });
 
       const request = {
