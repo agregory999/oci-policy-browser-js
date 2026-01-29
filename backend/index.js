@@ -196,7 +196,7 @@ app.get('/api/compartments', async (req, res) => {
     // Use instance principals provider and get tenancy OCID from metadata
     try {
       // Provider
-      const provider = new oci.common.InstancePrincipalsAuthenticationDetailsProvider();
+      const provider = new oci.auth.InstancePrincipalsAuthenticationDetailsProvider();
       const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
 
       // Get tenancy OCID (first time: fetch and memoize)
@@ -228,7 +228,7 @@ app.get('/api/compartments', async (req, res) => {
       return res.status(404).json({ error: "Profile not found" });
     }
     try {
-      const provider = new oci.ConfigFileAuthenticationDetailsProvider(
+      const provider = new oci.auth.ConfigFileAuthenticationDetailsProvider(
         OCI_CONFIG_PATH,
         profile
       );
@@ -271,7 +271,7 @@ app.get('/api/policies', async (req, res) => {
     }
     try {
       // Provider
-      const provider = new oci.common.InstancePrincipalsAuthenticationDetailsProvider();
+      const provider = new oci.auth.InstancePrincipalsAuthenticationDetailsProvider();
       const identityClient = new oci.identity.IdentityClient({ authenticationDetailsProvider: provider });
 
       const request = {
