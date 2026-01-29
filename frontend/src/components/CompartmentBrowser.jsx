@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import PolicyTable from './PolicyTable';
 
+// Backend API root - configurable with VITE_BACKEND_URL, defaults to localhost:3001 for local development
+const API_ROOT = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
+
 /**
  * CompartmentBrowser component
  * Handles compartment drilldown navigation, loading profiles, fetches policies, and passes policy data to PolicyTable.
@@ -33,7 +36,7 @@ function CompartmentBrowser({
 
   useEffect(() => {
     setLoadingProfiles(true);
-    fetch('http://localhost:3001/api/profiles')
+    fetch(`${API_ROOT}/api/profiles`)
       .then((r) => r.json())
       .then((data) => {
         setProfiles(data.profiles || []);
@@ -74,7 +77,7 @@ function CompartmentBrowser({
     if (!selectedProfile) return;
     setLoadingCompartments(true);
     setError('');
-    let url = `http://localhost:3001/api/compartments?profile=${encodeURIComponent(selectedProfile)}`;
+    let url = `${API_ROOT}/api/compartments?profile=${encodeURIComponent(selectedProfile)}`;
     if (parentId) url += `&parent=${encodeURIComponent(parentId)}`;
     fetch(url)
       .then((r) => r.json())
@@ -111,7 +114,7 @@ function CompartmentBrowser({
     setLoadingPolicies(true);
     setError('');
     fetch(
-      `http://localhost:3001/api/policies?profile=${encodeURIComponent(
+      `${API_ROOT}/api/policies?profile=${encodeURIComponent(
         selectedProfile
       )}&compartmentId=${encodeURIComponent(compartmentId)}`
     )

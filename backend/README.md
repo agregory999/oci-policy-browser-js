@@ -2,6 +2,21 @@
 
 This is the backend API for the OCI Compartment and Policy Browser.
 
+## Requirements
+
+- **Node.js 16.x or higher is required** (Node.js 18+ recommended for best compatibility with dependencies)
+- NPM 8.x or higher
+
+> **Note:** This backend uses `pino` v10.x (and dependencies) for logging.
+> Some dependencies may require Node.js 18+ or newer.
+> Running with older Node.js versions will result in logger errors and startup failure.
+> Check your version:
+>
+> ```
+> node --version
+> ```
+> If you see installation warnings about incompatible engines, upgrade Node.js to avoid issues.
+
 ## Overview
 
 - Serves as the backend for browsing compartments and IAM policies in OCI.

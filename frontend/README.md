@@ -28,6 +28,33 @@ Parent-child relationships and data flow primarily use React props and local com
 
 ## Getting Started
 
+### Configuring Backend URL
+
+The frontend communicates with the backend API at a configurable URL.  
+**By default, it uses `http://localhost:3001` for local development.**
+
+To support production deployment behind a Load Balancer (LB) or with a custom domain/path, set the backend API root using the environment variable:
+
+- **Vite projects:**  
+  Set `VITE_BACKEND_URL` to your backend's public API endpoint **before building the frontend**.
+
+Example for local development (default):
+```
+npm run dev
+# Frontend uses http://localhost:3001 as backend API root
+```
+
+Example for production (behind an LB, external domain):
+```
+VITE_BACKEND_URL="https://my-lb.example.com/api" npm run build
+# or set in your deployment environment as needed
+```
+
+- All API calls from the frontend will use the given URL (see `src/components/CompartmentBrowser.jsx` for details).
+- The value can be a full URL with optional path prefix if using path-based routing.
+
+**Note:** If `VITE_BACKEND_URL` is not set, the default for all frontend API requests is `http://localhost:3001`.
+
 1. Install dependencies:
 
    ```
